@@ -9,6 +9,10 @@ import simplejson as json
 from datetime import datetime
 from pprint import pprint
 
+# To allow these files to be run directly from command line (w/o Django shell)
+os.environ['DJANGO_SETTINGS_MODULE'] = "settings"
+
+from django.core.cache import cache
 from bson.objectid import ObjectId
 import operator
 import bleach
@@ -19,9 +23,6 @@ from history import *
 from summaries import *
 from search import index_text
 
-
-# To allow these files to be run directly from command line (w/o Django shell)
-os.environ['DJANGO_SETTINGS_MODULE'] = "settings"
 
 # HTML Tag whitelist for sanitizing user submitted text
 ALLOWED_TAGS = ("i", "b", "u", "strong", "em", "big", "small")
@@ -200,7 +201,50 @@ def text_from_cur(ref, textCur, context):
  	return ref
 
 
-def get_text(ref, context=1, commentary=True, version=None, lang=None, uid=None, pad=True):
+def get_text_cache_key(ref, context=1, commentary=True, version=None, lang=None, pad=True):
+	"""
+	Returns a cache key matching the signature of get_text.
+	"""
+	ref = norm_ref(ref, pad=pad) or ref
+	key = "%s(%d;%s;%s;%s;%s)" % (ref.replace(" ", "_"), context, commentary, version, lang, pad)
+	return key
+
+
+def cache_get_text(func):
+	"""
+	Function decorator to cache get_text
+	"""
+	def inner(*args, **kwargs):
+		cache_key = get_text_cache_key(*args, **kwargs)
+		cached = cache.get(cache_key)
+		if cached:
+			return cached
+		result = func(*args, **kwargs)
+		cache.set(cache_key, result)
+		
+		# Add this key to the list of keys pertaining to this book
+		# that have been cached
+		if "book" in result:
+			book_key = "%s.%s-KEYS" % (result["book"].replace(" ", "_"), str(result["sections"][0]))
+			book_keys = cache.get(book_key, [])
+			book_keys.append(cache_key)
+			cache.set(book_key, book_keys)
+
+		return result
+	return inner
+
+
+def delete_get_text_cache(ref):
+	"""
+	Delete cached values of get_text pertaining to ref. This includes
+	- text sections up to the section level
+	- connected texts
+	"""
+	pass
+
+
+@cache_get_text
+def get_text(ref, context=1, commentary=True, version=None, lang=None, pad=True):
 	"""
 	Take a string reference to a segment of text and return a dictionary including
 	the text and other info.
