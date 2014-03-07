@@ -200,7 +200,6 @@ def text_from_cur(ref, textCur, context):
 
  	return ref
 
-
 def get_text_cache_key(ref, context=1, commentary=True, version=None, lang=None, pad=True):
 	"""
 	Returns a cache key matching the signature of get_text.
@@ -227,6 +226,7 @@ def cache_get_text(func):
 		cached = cache.get(cache_key)
 		if cached:
 			return cached
+		print "NOT found: %s [%s]" % (args[0], cache_key)
 		result = func(*args, **kwargs)
 		cache.set(cache_key, result)
 		
