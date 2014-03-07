@@ -210,6 +210,14 @@ def get_text_cache_key(ref, context=1, commentary=True, version=None, lang=None,
 	return key
 
 
+def get_text_section_cache_key(pRef):
+	"""
+	Returns a cache key corresponding to the top level text section of pRef
+	"""
+	section = str(pRef["sections"][0]) if len(pRef["sections"]) else "1"
+	return "%s.%s-KEYS" % (pRef["book"].replace(" ", "_"), section)
+
+
 def cache_get_text(func):
 	"""
 	Function decorator to cache get_text
@@ -222,27 +230,44 @@ def cache_get_text(func):
 		result = func(*args, **kwargs)
 		cache.set(cache_key, result)
 		
-		# Add this key to the list of keys pertaining to this book
+		# Add this key to the list of keys pertaining to this book section
 		# that have been cached
 		if "book" in result:
-			book_key = "%s.%s-KEYS" % (result["book"].replace(" ", "_"), str(result["sections"][0]))
-			book_keys = cache.get(book_key, [])
-			book_keys.append(cache_key)
-			cache.set(book_key, book_keys)
+			section_key =  get_text_section_cache_key(result)
+			section_keys = cache.get(section_key, [])
+			section_keys.append(cache_key)
+			cache.set(section_key, section_keys)
 
 		return result
 	return inner
 
 
-def delete_get_text_cache(ref):
+def delete_get_text_cache(ref, delete_linked=True):
 	"""
-	Delete cached values of get_text pertaining to ref. This includes
-	- text sections up to the section level
-	- connected texts
+	Delete cached values of get_text pertaining to ref. This includes all text sections up to the section level. 
+	(e.g., Deleting "Genesis 1:1" will delete any caches of "Genesis 1" and below)
+	If delete_linked == True, any linked ref is also deleted.
 	"""
-	pass
+	pRef = parse_ref(ref)
+	if "error" in pRef: 
+		return
 
+	section_key = get_text_section_cache_key(pRef)
+	keys = cache.get(section_key, [])
+	for key in keys:
+		cache.delete(key)
+	cache.delete(section_key)
 
+	if delete_linked:
+		links = get_links(ref, with_text=False)
+		section_keys = set(get_text_section_cache_key(parse_ref(l["ref"])) for l in links)
+		for section_key in section_keys:
+			keys = cache.get(section_key, [])
+			for key in keys:
+				cache.delete(key)
+			cache.delete(section_key)
+
+	
 @cache_get_text
 def get_text(ref, context=1, commentary=True, version=None, lang=None, pad=True):
 	"""
@@ -467,10 +492,10 @@ def make_ref_re(ref):
 	return reRef
 
 
-def get_links(ref):
+def get_links(ref, with_text=True):
 	"""
 	Return a list links tied to 'ref'.
-	Retrieve texts for each link. 
+	If with_text, retrieve texts for each link. 
 	"""
 	links = []
 	nRef = norm_ref(ref)
@@ -482,14 +507,14 @@ def get_links(ref):
 		# each link contins 2 refs in a list
 		# find the position (0 or 1) of "anchor", the one we're getting links for
 		pos = 0 if re.match(reRef, link["refs"][0]) else 1 
-		com = format_link_for_client(link, nRef, pos)
+		com = format_link_for_client(link, nRef, pos, with_text=with_text)
 		
 		links.append(com)			
 
 	return links
 
 
-def format_link_for_client(link, ref, pos):
+def format_link_for_client(link, ref, pos, with_text=True):
 	"""
 	Returns an object that represents 'link' in the format expected by the reader client.
 	TODO - much of this format is legacy and should be cleaned up. 
@@ -516,9 +541,10 @@ def format_link_for_client(link, ref, pos):
 	com["commentaryNum"] = linkRef["sections"][-1] if linkRef["type"] == "Commentary" else 0
 	com["anchorText"]    = link["anchorText"] if "anchorText" in link else ""
 	
-	text = get_text(linkRef["ref"], context=0, commentary=False)
-	com["text"]          = text["text"] if text["text"] else ""
-	com["he"]            = text["he"] if text["he"] else ""
+	if with_text:
+		text             = get_text(linkRef["ref"], context=0, commentary=False)
+		com["text"]      = text["text"] if text["text"] else ""
+		com["he"]        = text["he"] if text["he"] else ""
 
 	# strip redundant verse ref for commentators
 	if com["category"] == "Commentary":
@@ -1176,6 +1202,9 @@ def save_text(ref, text, user, **kwargs):
 	# scan text for links to auto add
 	add_links_from_text(ref, text, user)
 
+	# invalidate any cache related to this text
+	delete_get_text_cache(ref)
+
 	# count available segments of text
 	if kwargs.get("count_after", True):
 		update_summaries_on_change(pRef["book"])
@@ -1263,6 +1292,10 @@ def save_link(link, user):
 	
 	db.links.save(link)
 	record_obj_change("link", {"_id": objId}, link, user)
+
+	# Delete cache of texts on either side of the link
+	delete_get_text_cache(link["refs"][0], delete_linked=False)
+	delete_get_text_cache(link["refs"][1], delete_linked=False)
 
 	return format_link_for_client(link, link["refs"][0], 0)
 
