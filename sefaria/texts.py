@@ -9,6 +9,10 @@ import simplejson as json
 from datetime import datetime
 from pprint import pprint
 
+# To allow these files to be run directly from command line (w/o Django shell)
+os.environ['DJANGO_SETTINGS_MODULE'] = "settings"
+
+from django.core.cache import cache
 from bson.objectid import ObjectId
 import operator
 import bleach
@@ -21,9 +25,6 @@ from search import index_text
 from hebrew import encode_hebrew_numeral, decode_hebrew_numeral
 
 
-# To allow these files to be run directly from command line (w/o Django shell)
-os.environ['DJANGO_SETTINGS_MODULE'] = "settings"
-
 # HTML Tag whitelist for sanitizing user submitted text
 ALLOWED_TAGS = ("i", "b", "u", "strong", "em", "big", "small")
 
@@ -32,22 +33,18 @@ db = connection[SEFARIA_DB]
 if SEFARIA_DB_USER and SEFARIA_DB_PASSWORD:
 	db.authenticate(SEFARIA_DB_USER, SEFARIA_DB_PASSWORD)
 
-# Simple caches for indices, parsed refs, table of contents and texts list
-indices = {}
-parsed = {}
-toc_cache = None
-texts_titles_cache = None
-texts_titles_json = None
-
+parsed = cache.get("parsed", {})
+indices = cache.get("indices", {})
 
 def get_index(book):
 	"""
 	Return index information about string 'book', but not the text.
 	"""
-	# look for result in indices cache
+	# look for result in indices cacheå
+	global indices
 	res = indices.get(book)
 	if res:
-		return copy.deepcopy(res)
+		return res
 
 	book = (book[0].upper() + book[1:]).replace("_", " ")
 	i = db.index.find_one({"titleVariants": book})
@@ -58,7 +55,8 @@ def get_index(book):
 		i = dict((key,i[key]) for key in keys if key in i)
 		if "sectionNames" in i:
 			i["textDepth"] = len(i["sectionNames"])
-		indices[book] = copy.deepcopy(i)
+		indices[book] = i
+		cache.set("indices", indices)
 		return i
 
 	# Try matching "Commentator on Text" e.g. "Rashi on Genesis"
@@ -68,7 +66,7 @@ def get_index(book):
 	commentatorsRe = "^(" + "|".join(commentators) + ") on (" + "|".join(books) +")$"
 	match = re.match(commentatorsRe, book)
 	if match:
-		i = get_index(match.group(1))
+		i = copy.deepcopy(get_index(match.group(1)))
 		bookIndex = get_index(match.group(2))
 		i["commentaryBook"] = bookIndex["title"]
 		i["commentaryCategories"] = bookIndex["categories"]
@@ -84,7 +82,8 @@ def get_index(book):
 		i["textDepth"] = len(i["sectionNames"])
 		i["titleVariants"] = [i["title"]]
 		i["length"] = bookIndex["length"]
-		indices[book] = copy.deepcopy(i)
+		indices[book] = i
+		cache.set("indices", indices)
 		return i
 
 	# TODO return a virtual index for shorthands
@@ -597,9 +596,9 @@ def parse_ref(ref, pad=True):
 	except IndexError:
 		pass
 
-	#parsed is the cache for parse_ref
+	global parsed
 	if ref in parsed and pad:
-		return copy.deepcopy(parsed[ref])
+		return parsed[ref]
 
 	pRef = {}
 
@@ -607,7 +606,8 @@ def parse_ref(ref, pad=True):
 	toSplit = ref.split("-")
 	if len(toSplit) > 2:
 		pRef["error"] = "Couldn't understand ref (too many -'s)"
-		parsed[ref] = copy.deepcopy(pRef)
+		parsed[ref] = pRef
+		cache.set("parsed", parsed)
 		return pRef
 
 	# Get book
@@ -638,24 +638,28 @@ def parse_ref(ref, pad=True):
 				d = len(parse_ref(to, pad=False)["sections"])
 				parsedRef["shorthand"] = pRef["book"]
 				parsedRef["shorthandDepth"] = d
-				parsed[ref] = copy.deepcopy(parsedRef)
+				parsed[ref] = parsedRef
+				cache.set("parsed", parsed)
 				return parsedRef
 
 	# Find index record or book
 	index = get_index(pRef["book"])
 
 	if "error" in index:
-		parsed[ref] = copy.deepcopy(index)
+		parsed[ref] = index
+		cache.set("parsed", parsed)
 		return index
 
 	if index["categories"][0] == "Commentary" and "commentaryBook" not in index:
 		parsed[ref] = {"error": "Please specify a text that %s comments on." % index["title"]}
+		cache.set("parsed", parsed)
 		return parsed[ref]
 
 	pRef["book"] = index["title"]
 	pRef["type"] = index["categories"][0]
-	del index["title"]
 	pRef.update(index)
+	del pRef["title"]
+
 
 	# Special Case Talmud or commentaries on Talmud from here
 	if pRef["type"] == "Talmud" or pRef["type"] == "Commentary" and "commentaryCategories" in index and index["commentaryCategories"][0] == "Talmud":
@@ -665,7 +669,8 @@ def parse_ref(ref, pad=True):
 		result["ref"] = make_ref(pRef)
 		if pad:
 			# only cache padded versions
-			parsed[ref] = copy.deepcopy(result)
+			parsed[ref] = result
+			cache.set("parsed", parsed)
 		return result
 
 	# Parse section numbers
@@ -694,13 +699,15 @@ def parse_ref(ref, pad=True):
 				pRef["toSections"][i] = int(cv[i - delta])
 	except ValueError:
 		parsed[ref] = {"error": "Couldn't understand text sections: %s" % ref}
+		cache.set("parsed", parsed)
 		return parsed[ref]
 
 	# give error if requested section is out of bounds
 	if "length" in index and len(pRef["sections"]):
 		if pRef["sections"][0] > index["length"]:
 			result = {"error": "%s only has %d %ss." % (pRef["book"], index["length"], pRef["sectionNames"][0])}
-			parsed[ref] = copy.deepcopy(result)
+			parsed[ref] = result
+			cache.set("parsed", parsed)
 			return result
 
 	if pRef["categories"][0] == "Commentary" and "commentaryBook" not in pRef:
@@ -712,7 +719,8 @@ def parse_ref(ref, pad=True):
 
 	pRef["ref"] = make_ref(pRef)
 	if pad:
-		parsed[ref] = copy.deepcopy(pRef)
+		parsed[ref] = pRef
+		cache.set("parsed", parsed)
 	return pRef
 
 
@@ -1375,7 +1383,6 @@ def save_index(index, user, **kwargs):
 	Save an index record to the DB.
 	Index records contain metadata about texts, but not the text itself.
 	"""
-	global indices, parsed
 	index = norm_index(index)
 
 	validation = validate_index(index)
@@ -1411,12 +1418,13 @@ def save_index(index, user, **kwargs):
 	for i in range(len(index["maps"])):
 		nref = norm_ref(index["maps"][i]["to"])
 		if not nref:
-			return {"error": "Couldn't understand text reference: '%s'." % index["maps"][i]["to"]}
+			return {"error": "Couldn't understand text reference in shorthand: '%s'." % index["maps"][i]["to"]}
 		index["maps"][i]["to"] = nref
 
 	# now save with normilzed maps
 	db.index.save(index)
-
+	
+	reset_texts_cache()
 	update_summaries_on_change(title, old_ref=old_title, recount=bool(old_title)) # only recount if the title changed
 
 	del index["_id"]
@@ -1484,9 +1492,12 @@ def update_text_title(old, new):
 		* titles in top text counts
 		* reset indices and parsed cache
 	"""
+	# this could be more targeted
 	global indices, parsed
 	indices = {}
 	parsed = {}
+	cache.delete("indices")
+	cache.delete("parsed")
 
 	update_title_in_index(old, new)
 	update_title_in_texts(old, new)
@@ -1683,12 +1694,14 @@ def reset_texts_cache():
 	"""
 	Resets caches that only update when text index information changes.
 	"""
-	global indices, parsed, texts_titles_cache, texts_titles_json, toc_cache
+	global indices, parsed
 	indices = {}
 	parsed = {}
-	toc_cache = None
-	texts_titles_cache = None
-	texts_titles_json = None
+	cache.delete("indices")
+	cache.delete("parsed")
+	cache.delete("toc")
+	cache.delete("text_titles")
+	cache.delete("text_titles_json")
 	delete_template_cache('texts_list')
 
 
@@ -1738,31 +1751,33 @@ def get_text_titles(query={}):
 	"""
 	Return a list of all known text titles, including title variants and shorthands/maps.
 	Optionally take a query to limit results.
-	Cache the fill list which is used on every page (for nav autocomplete)
+	Cache the full list which is used on every page (for nav autocomplete)
 	"""
-	global texts_titles_cache
+	text_titles_cache = cache.get("text_titles")
 
-	if query or not texts_titles_cache:
+	if query or not text_titles_cache:
 		titles = db.index.find(query).distinct("titleVariants")
 		titles.extend(db.index.find(query).distinct("maps.from"))
 
 		if query:
 			return titles
+		else:
+			cache.set("text_titles", titles)
+			text_titles_cache = titles
 
-		texts_titles_cache = titles
-
-	return texts_titles_cache
+	return text_titles_cache
 
 
 def get_text_titles_json():
 	"""
 	Returns JSON of full texts list, keeps cached
 	"""
-	global texts_titles_json
-	if not texts_titles_json:
-		texts_titles_json = json.dumps(get_text_titles())
+	text_titles_json = cache.get("text_titles_json")
+	if not text_titles_json or text_titles_json == 'null':
+		text_titles_json = json.dumps(get_text_titles())
+		cache.set("text_titles_json", text_titles_json)
 
-	return texts_titles_json
+	return text_titles_json
 
 
 def get_text_categories():

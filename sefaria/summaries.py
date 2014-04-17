@@ -3,12 +3,11 @@ import sys
 import os
 import re 
 import copy
-
 from pprint import pprint
 
-import texts as sefaria
+from django.core.cache import cache
 
-toc_cache = []
+import texts as sefaria
 
 # Giant list ordering or categories
 # indentation and inclusion of duplicate categories (like "Seder Moed")
@@ -89,20 +88,32 @@ order = [
 ]
 
 def get_toc():
-	global toc_cache
-	if toc_cache:
-		return toc_cache
+	"""
+	Returns the table of contents object from cache,
+	or creates it if not currently cached. 
+	"""
+	toc = cache.get("toc")
+	if toc:
+		return toc
 
 	return update_table_of_contents()
 	
 
 def save_toc(toc):
-	global toc_cache
-	toc_cache = toc
+	"""
+	Cache the table of contents objects,
+	and deletes other dependent caches. 
+	"""
+	cache.set("toc", toc)
 	sefaria.delete_template_cache("texts_list")
 
 
 def update_table_of_contents():
+	"""
+	Returns the table of contents object by building is fromt scratch
+	from all existing index records. 
+	"""
+
 	toc = []
 
 	# Add an entry for every text we know about
@@ -143,7 +154,6 @@ def update_summaries_on_change(ref, old_ref=None, recount=True):
 	Update text summary docs to account for change or insertion of 'text'
 	* recount - whether or not to perform a new count of available text
 	"""
-	global toc
 	toc = get_toc()
 	index = sefaria.get_index(ref)
 	if "error" in index:

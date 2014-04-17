@@ -9,3 +9,5 @@ bleach
 django_mailchimp
 functional
 pyes
+redis
+django-redis
