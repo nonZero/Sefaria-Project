@@ -3,12 +3,11 @@ import sys
 import os
 import re 
 import copy
-
 from pprint import pprint
 
-import texts as sefaria
+from django.core.cache import cache
 
-toc_cache = []
+import texts as sefaria
 
 # Giant list ordering or categories
 # indentation and inclusion of duplicate categories (like "Seder Moed")
@@ -76,30 +75,45 @@ order = [
 	'Elucidation', 
 	'Modern', 
 	'Other',
+			'Onkelos Genesis',
+			'Onkelos Exodus',
+			'Onkelos Leviticus',
+			'Onkelos Numbers',
+			'Onkelos Deuteronomy',
+			'Targum Jonathan on Genesis',
+			'Targum Jonathan on Exodus',
+			'Targum Jonathan on Leviticus',
+			'Targum Jonathan on Numbers',
+			'Targum Jonathan on Deuteronomy',
 ]
 
 def get_toc():
-	global toc_cache
-	if toc_cache:
-		return toc_cache
-	toc = sefaria.db.summaries.find_one({"name": "toc"})
-	if not toc:
-		return update_table_of_contents()
-	
-	toc_cache = toc["contents"]
-	return toc_cache
+	"""
+	Returns the table of contents object from cache,
+	or creates it if not currently cached. 
+	"""
+	toc = cache.get("toc")
+	if toc:
+		return toc
 
+	return update_table_of_contents()
+	
 
 def save_toc(toc):
-	global toc_cache
-	toc_cache = toc
-
-	sefaria.db.summaries.remove({"name": "toc"})		
-	sefaria.db.summaries.save({"name": "toc", "contents": toc})
+	"""
+	Cache the table of contents objects,
+	and deletes other dependent caches. 
+	"""
+	cache.set("toc", toc)
 	sefaria.delete_template_cache("texts_list")
 
 
 def update_table_of_contents():
+	"""
+	Returns the table of contents object by building is fromt scratch
+	from all existing index records. 
+	"""
+
 	toc = []
 
 	# Add an entry for every text we know about
@@ -140,7 +154,6 @@ def update_summaries_on_change(ref, old_ref=None, recount=True):
 	Update text summary docs to account for change or insertion of 'text'
 	* recount - whether or not to perform a new count of available text
 	"""
-	global toc
 	toc = get_toc()
 	index = sefaria.get_index(ref)
 	if "error" in index:
@@ -281,9 +294,11 @@ def add_counts_to_category(cat, parents=[]):
 def sort_toc_node(node, recur=False):
 	"""
 	Sort the texts and categories in node according to:
-	- the order of categories listed in the global var 'order'
-	- the order field on a text
-	- alphabetically
+	1. the order of categories and texts listed in the global var 'order'
+	2. the order field on a text
+	3. alphabetically
+
+	If 'recur', call sort_toc_node on each category in 'node' as well.
 	"""
 	def node_sort(a):
 		if "category" in a:
@@ -292,10 +307,13 @@ def sort_toc_node(node, recur=False):
 			except ValueError:
 				return a["category"]
 		elif "title" in a:
-			if "order" in a:
-				return a["order"][0]
-			else:
-				return a["title"]
+			try:
+				return order.index(a["title"])
+			except ValueError:
+				if "order" in a:
+					return a["order"][0]
+				else:
+					return a["title"]
 
 		return None
 

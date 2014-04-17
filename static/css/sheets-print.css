@@ -27,7 +27,15 @@
 }
 
 .source {
-    page-break-inside: avoid;
+    /*page-break-inside: avoid;*/
+}
+
+a {
+	color: black;
+}
+
+#printFooter {
+	display: block;
 }
 
 @page  

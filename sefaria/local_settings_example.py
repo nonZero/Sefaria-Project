@@ -32,6 +32,22 @@ CACHES = {
     }
 }
 
+# To use a Redis Backend for Caching 
+#CACHES = {
+#    "default": {
+#        "BACKEND": "redis_cache.cache.RedisCache",
+#        "LOCATION": "127.0.0.1:6379:1",
+#        "OPTIONS": {
+#            "CLIENT_CLASS": "redis_cache.client.DefaultClient",
+#            #"PASSWORD": "secretpassword", # Optional
+#        },
+#        "TIMEOUT": 60 * 60 * 24 * 30,
+#    }
+#}
+#
+#SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+#SESSION_CACHE_ALIAS = "default"
+
 SECRET_KEY = 'insert your long random secret key here !'
 
 STATICFILES_DIRS = (
@@ -62,6 +78,8 @@ SEFARIA_DB_PASSWORD = 'your mongo password'
 # ElasticSearch server
 SEARCH_HOST = "http://localhost:9200"
 SEARCH_INDEX_ON_SAVE = True # Whether to send texts and source sheet to Search Host for indexing after save
+
+SEFARIA_DATA_PATH = '/path/to/you/data/dir' # used for exporting texts 
 
 GOOGLE_ANALYTICS_CODE = 'your google analytics code'
 

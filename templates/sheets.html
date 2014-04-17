@@ -34,8 +34,9 @@
 		<span id="addButton" class="btn btn-primary"><span class="icon-plus"></span>Add
 			<div class="optionsMenu">
 				<div class="optionItem" id="addSource">Source</div>
-				<div class="optionItem" id="addComment">Comment</div>
+				<div class="optionItem" id="addBiOutside">Outside Text (Bilingual)</div>
 				<div class="optionItem" id="addOutside">Outside Text</div>
+				<div class="optionItem" id="addComment">Comment</div>
 			</div>
 		</span>
 		{% endif %}
@@ -184,6 +185,16 @@
 			<center id="loginWarning">Take a spin! But you'll need to <a href="/login?next=/sheets/new">login</a> or <a href="/register?next=/sheets/new">register</a> to save your work.<center>
 		{% endif %}
 	</div>
+
+	<div id="printFooter">
+		<img src="/static/img/fb-og-image.png">
+		<div>
+			Made with the Sefaria Source Sheet Builder<br>
+			www.sefaria.org/sheets
+		</div>
+	</div>
+
+
 </div>
 
 <div id="belowSheet"></div>
