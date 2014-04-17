@@ -36,6 +36,19 @@ if SEFARIA_DB_USER and SEFARIA_DB_PASSWORD:
 parsed = cache.get("parsed", {})
 indices = cache.get("indices", {})
 
+def return_copy(func):
+	"""
+	Function decorator to return copies of dictionaries, rather than objects themselves
+	Use on functions like get_index and parse_ref which are cached, so that later change to
+	the result don't affect in-memory caches. 
+	"""
+	def inner(*args, **kwargs):
+		ret = func(*args, **kwargs)
+		return copy.deepcopy(ret)
+	return inner
+
+
+@return_copy
 def get_index(book):
 	"""
 	Return index information about string 'book', but not the text.
@@ -564,7 +577,7 @@ def format_note_for_client(note):
 
 	return com
 
-
+@return_copy
 def parse_ref(ref, pad=True):
 	"""
 	Take a string reference (e.g. 'Job.2:3-3:1') and returns a parsed dictionary of its fields
