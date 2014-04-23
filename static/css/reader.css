@@ -2487,6 +2487,14 @@ body.newText #addVersionHeaderRight input#versionSource {
 	text-align: center;
 }
 
+#startTogether {
+	position: absolute;
+	top: 50px;
+	left: 5px;
+}
+
+
+
 a {
 	color: #08C;
 	text-decoration: none;

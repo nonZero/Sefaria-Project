@@ -80,6 +80,8 @@
 
 	<div id="aboutPanelAnchor" class="panelAnchor"><div class="inner"></div></div>
 
+	<button id="startTogether" onclick="TogetherJS(this); return false;">Together</button>
+
 	{% include "header.html" %}
 
 	<div id="newTextModal" class="gradient sModal">
@@ -292,7 +294,6 @@
 <script src="/static/js/jquery.slimscroll.min.js"></script>
 <script src="/static/js/jquery.tag-it.min.js"></script>
 
-
 {% include "js/headers.js" %}
 <script>
 {% autoescape off %}
@@ -309,5 +310,7 @@
 </script>
 <script type="text/javascript" src="/static/js/util.js"></script>
 <script type="text/javascript" src="/static/js/reader.js"></script>
+
+<script src="https://togetherjs.com/togetherjs-min.js"></script>
 </body>
 </html>

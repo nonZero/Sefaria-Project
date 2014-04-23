@@ -33,6 +33,7 @@
 <div id="error"></div>
 <div id="controls">
 		<div id="buttonBox">
+		<button id="startTogether" class="btn btn-primary" onclick="TogetherJS(this); return false;">Together</button>
 		{% if can_edit or can_add %}
 		<span id="addButton" class="btn btn-primary"><span class="icon-plus"></span>Add
 			<div class="optionsMenu">
@@ -271,5 +272,6 @@
 {% endif %}
 <script src="/static/js/util.js"></script>
 <script src="/static/js/sheets.js"></script>
+<script src="https://togetherjs.com/togetherjs-min.js"></script>
 </body>
 </html>
