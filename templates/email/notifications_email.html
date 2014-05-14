@@ -1,7 +1,7 @@
 {% extends "email/base.html" %}
 
 {% block body %}
-	r3r3
+	Here's some new activity for you Sefaria:
 	{% for notification in notifications.notifications %}
 		{% include "email/notification.html" with notification=notification %}
 	{% endfor %}
